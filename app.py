@@ -38,7 +38,7 @@ async def geocode(name: str, count: int = 5):
     ]
 
 @app.get("/api/weather")
-async def weather(lat: float, lon: float):
+async def weather(lat: float, lon: float, unit: str = "metric"):
     # Open-Meteo Forecast API docs :contentReference[oaicite:4]{index=4}
     params = {
         "latitude": lat,
@@ -47,6 +47,7 @@ async def weather(lat: float, lon: float):
         "hourly": "temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m",
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
         "timezone": "auto",
+        "temperature_unit": "fahrenheit" if unit == "imperial" else "celsius",
     }
 
     async with httpx.AsyncClient(timeout=10) as client:

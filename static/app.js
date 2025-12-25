@@ -3,6 +3,18 @@ const searchBtn = document.getElementById("searchBtn");
 const matchesEl = document.getElementById("matches");
 const currentEl = document.getElementById("current");
 const hourlyEl = document.getElementById("hourly");
+const dailyEl = document.getElementById("daily");
+const unitToggleEl = document.getElementById("unitToggle");
+const unitLabelEl = document.getElementById("unitLabel");
+
+
+let unit = localStorage.getItem("unit") || "metric"; // "metric" or "imperial"
+
+function syncUnitUI() {
+  unitToggleEl.checked = (unit === "imperial");
+  unitLabelEl.textContent = unit === "imperial" ? "°F" : "°C";
+}
+syncUnitUI();
 
 function wcToText(code) {
   // Simple mapping (you can expand later)
@@ -38,8 +50,29 @@ async function fetchWeather(lat, lon) {
   const url = new URL("/api/weather", window.location.origin);
   url.searchParams.set("lat", lat);
   url.searchParams.set("lon", lon);
+  url.searchParams.set("unit", unit);
   const res = await fetch(url);
   return await res.json();
+}
+function renderDaily(data) {
+  const d = data.daily;
+  const du = data.daily_units;
+
+  // daily.time, daily.temperature_2m_max, daily.temperature_2m_min, etc.
+  dailyEl.innerHTML = `
+    <h2>7-Day Forecast</h2>
+    <div class="daily">
+      ${d.time.map((date, i) => `
+        <div class="day">
+          <div class="subtle">${date}</div>
+          <div><b>${wcToText(d.weather_code[i])}</b></div>
+          <div>High: ${d.temperature_2m_max[i]}${du.temperature_2m_max}</div>
+          <div>Low: ${d.temperature_2m_min[i]}${du.temperature_2m_min}</div>
+          <div class="subtle">💧 ${d.precipitation_probability_max[i]}${du.precipitation_probability_max}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderMatches(matches) {
@@ -109,6 +142,7 @@ async function renderWeather(lat, lon) {
   matchesEl.innerHTML = `<span class="subtle">Lat ${data.latitude}, Lon ${data.longitude} (${data.timezone})</span>`;
   renderCurrent(data);
   renderHourly(data);
+  renderDaily(data);
 }
 
 searchBtn.addEventListener("click", async () => {
@@ -118,7 +152,34 @@ searchBtn.addEventListener("click", async () => {
   matchesEl.innerHTML = `<span class="subtle">Searching…</span>`;
   currentEl.innerHTML = "";
   hourlyEl.innerHTML = "";
+  dailyEl.innerHTML = "";
 
   const matches = await geocodeCity(name);
   renderMatches(matches);
+});
+
+let lastLat = null;
+let lastLon = null;
+
+// modify renderWeather to remember last location
+async function renderWeather(lat, lon) {
+  lastLat = lat; lastLon = lon;
+
+  matchesEl.innerHTML = `<span class="subtle">Loading forecast…</span>`;
+  const data = await fetchWeather(lat, lon);
+  matchesEl.innerHTML = `<span class="subtle">Lat ${data.latitude}, Lon ${data.longitude} (${data.timezone})</span>`;
+  renderCurrent(data);
+  renderHourly(data);
+  renderDaily(data);
+}
+
+unitToggleEl.addEventListener("change", async () => {
+  unit = unitToggleEl.checked ? "imperial" : "metric";
+  localStorage.setItem("unit", unit);
+  syncUnitUI();
+
+  // If user already selected a location, refresh data in new units
+  if (lastLat && lastLon) {
+    await renderWeather(lastLat, lastLon);
+  }
 });

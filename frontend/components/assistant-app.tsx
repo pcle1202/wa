@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FormEvent, startTransition, useEffect, useEffectEvent, useState } from "react";
+import { FormEvent, startTransition, useEffect, useState } from "react";
 
 import { HourlyChart } from "@/components/hourly-chart";
 import { fetchRecommendations, fetchWeather } from "@/lib/api";
@@ -42,24 +42,6 @@ export function AssistantApp({ view }: AssistantAppProps) {
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  const loadAllData = useEffectEvent(async (city: string, nextPreferences: UserPreferences) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const [nextWeather, nextRecommendations] = await Promise.all([
-        fetchWeather(city, nextPreferences.unit_system),
-        fetchRecommendations(city, nextPreferences),
-      ]);
-      setWeather(nextWeather);
-      setRecommendations(nextRecommendations);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to load assistant data.");
-    } finally {
-      setIsLoading(false);
-    }
-  });
-
   useEffect(() => {
     const stored = loadStoredPreferences();
     setPreferences(stored);
@@ -72,9 +54,42 @@ export function AssistantApp({ view }: AssistantAppProps) {
     if (!isReady) {
       return;
     }
+
     persistPreferences(preferences);
-    void loadAllData(activeCity, preferences);
-  }, [activeCity, isReady, preferences, loadAllData]);
+    let isCancelled = false;
+
+    async function loadAllData() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [nextWeather, nextRecommendations] = await Promise.all([
+          fetchWeather(activeCity, preferences.unit_system),
+          fetchRecommendations(activeCity, preferences),
+        ]);
+        if (isCancelled) {
+          return;
+        }
+        setWeather(nextWeather);
+        setRecommendations(nextRecommendations);
+      } catch (nextError) {
+        if (isCancelled) {
+          return;
+        }
+        setError(nextError instanceof Error ? nextError.message : "Unable to load assistant data.");
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadAllData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeCity, isReady, preferences]);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
